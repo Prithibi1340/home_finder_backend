@@ -26,7 +26,9 @@ class Post(models.Model):
     is_rented = models.BooleanField(default=False)
     likes = models.ManyToManyField(User, related_name='liked_posts', blank=True)
     dislikes = models.ManyToManyField(User, related_name='disliked_posts', blank=True)
-    
+    onlyfor_female = models.BooleanField(default=False)
+    onlyfor_male = models.BooleanField(default=False)
+    address = models.CharField(max_length=255, blank=True)
     def __str__(self):
         return f"Post by {self.user.email} - {self.house_number}"
 

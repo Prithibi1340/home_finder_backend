@@ -30,7 +30,6 @@ def iter_file_range(file_path, start, end, chunk_size=8192):
 class RegisterView(APIView):
     def post(self, request):
         data = request.data.copy()
-        data['password'] = make_password(data['password'])
         serializer = UserSerializer(data=data)
         if serializer.is_valid():
             user = serializer.save()  # Save and get the user instance
@@ -50,13 +49,50 @@ class LoginView(APIView):
             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
+class UserDetailView(APIView):
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get(self, request, user_id):
+        user = get_object_or_404(User, user_id=user_id)
+        serializer = UserSerializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request, user_id):
+        return self._update_user(request, user_id, partial=False)
+
+    def patch(self, request, user_id):
+        return self._update_user(request, user_id, partial=True)
+
+    def _update_user(self, request, user_id, partial):
+        user = get_object_or_404(User, user_id=user_id)
+        data = {}
+        if hasattr(request.data, 'lists'):
+            for key, values in request.data.lists():
+                data[key] = values if len(values) > 1 else values[0]
+        else:
+            data = dict(request.data)
+
+        if 'profile_picture' in request.FILES:
+            data['profile_picture'] = request.FILES['profile_picture']
+
+        serializer = UserSerializer(user, data=data, partial=partial)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
     
 
 class CreatePostView(APIView):
     # authentication_classes = [TokenAuthentication]
     # permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-
+    
+    
+    
     def post(self, request):
         data = {}
         if hasattr(request.data, 'lists'):
@@ -80,8 +116,32 @@ class CreatePostView(APIView):
     
     def get(self, request):
         posts = Post.objects.all()
+
+        visibility = request.query_params.get('visibility', 'all').lower()
+        address = request.query_params.get('address', '').strip()
+
+        if visibility == 'male':
+            posts = posts.filter(onlyfor_male=True)
+        elif visibility == 'female':
+            posts = posts.filter(onlyfor_female=True)
+        elif visibility not in ('all', ''):
+            return Response(
+                {'error': "Invalid visibility. Use 'male', 'female', or 'all'"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if address:
+            posts = posts.filter(address__icontains=address)
+
         serializer = PostSerializer(posts, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class PostDeleteView(APIView):
+    def delete(self, request, post_id):
+        post = get_object_or_404(Post, id=post_id)
+        post.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class VideoStreamView(APIView):
@@ -148,16 +208,19 @@ class VideoStreamView(APIView):
         response['Content-Length'] = str(content_length)
         return response
 
-class AddCommentView(APIView):
-    # authentication_classes = [TokenAuthentication]
-    # permission_classes = [IsAuthenticated]
-    def post(self, request):
-        if not getattr(request.user, 'is_authenticated', False):
-            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+class CommentListView(APIView):
+    def get(self, request, post_id):
+        post = get_object_or_404(Post, id=post_id)
+        comments = post.comments.all()
+        serializer = CommentSerializer(comments, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
-        serializer = CommentSerializer(data=request.data)
+
+class AddCommentView(APIView):
+    def post(self, request):
+        serializer = CommentSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            serializer.save(user=request.user)
+            serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

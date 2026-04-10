@@ -42,7 +42,7 @@ class PostSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Post
-        fields = ['id', 'description', 'rent_price', 'user', 'house_number', 'geo_location', 'images', 'videos', 'uploaded_images', 'uploaded_videos', 'created_at', 'updated_at', 'is_rented', 'likes', 'dislikes']
+        fields = ['id', 'description', 'rent_price', 'user', 'house_number', 'geo_location', 'images', 'videos', 'uploaded_images', 'uploaded_videos', 'created_at', 'updated_at', 'is_rented', 'likes', 'dislikes', 'onlyfor_female', 'onlyfor_male', 'address']
 
     def create(self, validated_data):
         uploaded_images = validated_data.pop('uploaded_images', [])
@@ -68,6 +68,22 @@ class PostSerializer(serializers.ModelSerializer):
         return post
 
 class CommentSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.name', read_only=True)
+    user_profile_picture = serializers.SerializerMethodField()
+
     class Meta:
         model = Comment
-        fields = ['id', 'post', 'user', 'content', 'created_at', 'updated_at']
+        fields = ['id', 'post', 'user', 'user_name', 'user_profile_picture', 'content', 'created_at', 'updated_at']
+
+    def get_user_profile_picture(self, obj):
+        request = self.context.get('request')
+        profile_picture = getattr(obj.user, 'profile_picture', None)
+
+        if not profile_picture:
+            return None
+
+        profile_picture_url = profile_picture.url
+        if request is not None:
+            return request.build_absolute_uri(profile_picture_url)
+
+        return profile_picture_url
